@@ -70,10 +70,15 @@ proto::MapBuilderOptions CreateMapBuilderOptions(
   return options;
 }
 
+/**
+ * @brief 构造函数
+ * @param options 配置项
+ */
 MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
     : options_(options), thread_pool_(options.num_background_threads()) {
   CHECK(options.use_trajectory_builder_2d() ^
         options.use_trajectory_builder_3d());
+  /** 使用2D地图，构造2D的pose_graph_ */
   if (options.use_trajectory_builder_2d()) {
     pose_graph_ = common::make_unique<PoseGraph2D>(
         options_.pose_graph_options(),
@@ -81,6 +86,7 @@ MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
             options_.pose_graph_options().optimization_problem_options()),
         &thread_pool_);
   }
+  /** 使用3D地图，构造3D的pose_graph_ */
   if (options.use_trajectory_builder_3d()) {
     pose_graph_ = common::make_unique<PoseGraph3D>(
         options_.pose_graph_options(),
@@ -95,19 +101,34 @@ MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
   }
 }
 
+/**
+ * @brief 添加轨迹构建器
+ * @param expected_sensor_ids 
+ * @param trajectory_options 轨迹配置项
+ * @param local_slam_result_callback
+ * @return 新的轨迹构建器id 
+ */
 int MapBuilder::AddTrajectoryBuilder(
     const std::set<SensorId>& expected_sensor_ids,
     const proto::TrajectoryBuilderOptions& trajectory_options,
     LocalSlamResultCallback local_slam_result_callback) {
+
+  /** 分配新的轨迹id */
   const int trajectory_id = trajectory_builders_.size();
+  
+  /** 处理3D地图的情况 */
   if (options_.use_trajectory_builder_3d()) {
+	/** 定义一个轨迹构建器 */
     std::unique_ptr<LocalTrajectoryBuilder3D> local_trajectory_builder;
+	/** 实例化轨迹构建器 */
     if (trajectory_options.has_trajectory_builder_3d_options()) {
       local_trajectory_builder = common::make_unique<LocalTrajectoryBuilder3D>(
           trajectory_options.trajectory_builder_3d_options(),
           SelectRangeSensorIds(expected_sensor_ids));
     }
+	/** 检查强制类型转换：PoseGraph转成PoseGraph3D */
     DCHECK(dynamic_cast<PoseGraph3D*>(pose_graph_.get()));
+	/** 将轨迹构建器压入构建器数组 */
     trajectory_builders_.push_back(
         common::make_unique<CollatedTrajectoryBuilder>(
             sensor_collator_.get(), trajectory_id, expected_sensor_ids,
@@ -115,14 +136,18 @@ int MapBuilder::AddTrajectoryBuilder(
                 std::move(local_trajectory_builder), trajectory_id,
                 static_cast<PoseGraph3D*>(pose_graph_.get()),
                 local_slam_result_callback)));
-  } else {
+  } else { /** 处理2D地图的情况 */
+    /** 定义一个轨迹构建器 */
     std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder;
+	/** 实例化轨迹构建器 */
     if (trajectory_options.has_trajectory_builder_2d_options()) {
       local_trajectory_builder = common::make_unique<LocalTrajectoryBuilder2D>(
           trajectory_options.trajectory_builder_2d_options(),
           SelectRangeSensorIds(expected_sensor_ids));
     }
+	/** 检查强制类型转换：PoseGraph转成PoseGraph2D */
     DCHECK(dynamic_cast<PoseGraph2D*>(pose_graph_.get()));
+	/** 将轨迹构建器压入构建器数组 */
     trajectory_builders_.push_back(
         common::make_unique<CollatedTrajectoryBuilder>(
             sensor_collator_.get(), trajectory_id, expected_sensor_ids,
@@ -130,7 +155,8 @@ int MapBuilder::AddTrajectoryBuilder(
                 std::move(local_trajectory_builder), trajectory_id,
                 static_cast<PoseGraph2D*>(pose_graph_.get()),
                 local_slam_result_callback)));
-
+	
+	/** 2D地图还需要额外添加一个重叠submap微调器到PoseGraph中 */
     if (trajectory_options.has_overlapping_submaps_trimmer_2d()) {
       const auto& trimmer_options =
           trajectory_options.overlapping_submaps_trimmer_2d();
@@ -144,11 +170,13 @@ int MapBuilder::AddTrajectoryBuilder(
           trimmer_options.min_added_submaps_count()));
     }
   }
+  /** 如果是纯定位，再添加一个纯定位微调器到PoseGraph中 */
   if (trajectory_options.pure_localization()) {
     constexpr int kSubmapsToKeep = 3;
     pose_graph_->AddTrimmer(common::make_unique<PureLocalizationTrimmer>(
         trajectory_id, kSubmapsToKeep));
   }
+  /** 如果有初始的轨迹位姿，则添加初始位姿到PoseGraph中 */
   if (trajectory_options.has_initial_trajectory_pose()) {
     const auto& initial_trajectory_pose =
         trajectory_options.initial_trajectory_pose();
@@ -157,14 +185,20 @@ int MapBuilder::AddTrajectoryBuilder(
         transform::ToRigid3(initial_trajectory_pose.relative_pose()),
         common::FromUniversal(initial_trajectory_pose.timestamp()));
   }
+  
+  /** 将传感器相关的配置转成protobuf流 */
   proto::TrajectoryBuilderOptionsWithSensorIds options_with_sensor_ids_proto;
   for (const auto& sensor_id : expected_sensor_ids) {
     *options_with_sensor_ids_proto.add_sensor_id() = ToProto(sensor_id);
   }
+  /** 将轨迹构建器配置项添加到传感器配置项 */
   *options_with_sensor_ids_proto.mutable_trajectory_builder_options() =
       trajectory_options;
+  /** 将传感器配置项压入轨迹配置项数组 */
   all_trajectory_builder_options_.push_back(options_with_sensor_ids_proto);
+  /** 确认轨迹构建器数组和其配置项数组长度一致 */
   CHECK_EQ(trajectory_builders_.size(), all_trajectory_builder_options_.size());
+  /** 返回新的轨迹id */
   return trajectory_id;
 }
 

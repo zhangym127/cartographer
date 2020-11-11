@@ -56,30 +56,36 @@ class MapBuilderInterface {
       const proto::TrajectoryBuilderOptions& trajectory_options,
       LocalSlamResultCallback local_slam_result_callback) = 0;
 
+  /** 反序列化 */
   // Creates a new trajectory and returns its index. Querying the trajectory
   // builder for it will return 'nullptr'.
   virtual int AddTrajectoryForDeserialization(
       const proto::TrajectoryBuilderOptionsWithSensorIds&
           options_with_sensor_ids_proto) = 0;
 
+  /** 根据指定的轨迹id，返回一个TrajectoryBuilderInterface指针 */
   // Returns the 'TrajectoryBuilderInterface' corresponding to the specified
   // 'trajectory_id' or 'nullptr' if the trajectory has no corresponding
   // builder.
   virtual mapping::TrajectoryBuilderInterface* GetTrajectoryBuilder(
       int trajectory_id) const = 0;
 
+  /** 完成指定的轨迹 */
   // Marks the TrajectoryBuilder corresponding to 'trajectory_id' as finished,
   // i.e. no further sensor data is expected.
   virtual void FinishTrajectory(int trajectory_id) = 0;
 
+  /** 根据指定的submap_id来查询submap */
   // Fills the SubmapQuery::Response corresponding to 'submap_id'. Returns an
   // error string on failure, or an empty string on success.
   virtual std::string SubmapToProto(const SubmapId& submap_id,
                                     proto::SubmapQuery::Response* response) = 0;
 
+  /** 序列化当前的状态到proto流中 */
   // Serializes the current state to a proto stream.
   virtual void SerializeState(io::ProtoStreamWriterInterface* writer) = 0;
 
+  /** 从proto流中加载SLAM状态 */
   // Loads the SLAM state from a proto stream.
   virtual void LoadState(io::ProtoStreamReaderInterface* reader,
                          bool load_frozen_state) = 0;

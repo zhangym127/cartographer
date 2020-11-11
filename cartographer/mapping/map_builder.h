@@ -32,6 +32,12 @@ namespace mapping {
 proto::MapBuilderOptions CreateMapBuilderOptions(
     common::LuaParameterDictionary *const parameter_dictionary);
 
+/** 
+ * MapBuilder是Catographer算法的最顶层，包括TrajectoryBuilders和PoseGraph两部分
+ * 	~TrajectoryBuilders用于submap的建立与维护
+ * 	~PoseGraph用于环路闭合
+ * MapBuilder将SLAM栈和TrajectoryBuilders以及PoseGraph连接起来。
+ */
 // Wires up the complete SLAM stack with TrajectoryBuilders (for local submaps)
 // and a PoseGraph for loop closure.
 class MapBuilder : public MapBuilderInterface {
@@ -41,6 +47,8 @@ class MapBuilder : public MapBuilderInterface {
 
   MapBuilder(const MapBuilder &) = delete;
   MapBuilder &operator=(const MapBuilder &) = delete;
+
+  /** MapBuilder实现了MapBuilderInterface定义的若干接口 */
 
   int AddTrajectoryBuilder(
       const std::set<SensorId> &expected_sensor_ids,
@@ -61,35 +69,39 @@ class MapBuilder : public MapBuilderInterface {
   void LoadState(io::ProtoStreamReaderInterface *reader,
                  bool load_frozen_state) override;
 
+  /* 重载实现：返回PoseGraphInterface类型的指针 */
   mapping::PoseGraphInterface *pose_graph() override {
     return pose_graph_.get();
   }
 
+  /* 重载实现：返回轨迹构建器的数量 */
   int num_trajectory_builders() const override {
     return trajectory_builders_.size();
   }
 
+  /* 重载实现：返回trajectory_id指定的轨迹构建器 */
   mapping::TrajectoryBuilderInterface *GetTrajectoryBuilder(
       int trajectory_id) const override {
     return trajectory_builders_.at(trajectory_id).get();
   }
 
+  /* 重载实现：返回轨迹构建器配置项 */
   const std::vector<proto::TrajectoryBuilderOptionsWithSensorIds>
       &GetAllTrajectoryBuilderOptions() const override {
     return all_trajectory_builder_options_;
   }
 
  private:
-  const proto::MapBuilderOptions options_;
-  common::ThreadPool thread_pool_;
+  const proto::MapBuilderOptions options_;	//配置项
+  common::ThreadPool thread_pool_;			//线程池
 
-  std::unique_ptr<PoseGraph> pose_graph_;
+  std::unique_ptr<PoseGraph> pose_graph_;	//PoseGraph指针
 
   std::unique_ptr<sensor::CollatorInterface> sensor_collator_;
   std::vector<std::unique_ptr<mapping::TrajectoryBuilderInterface>>
-      trajectory_builders_;
+      trajectory_builders_;					//轨迹构建器数组
   std::vector<proto::TrajectoryBuilderOptionsWithSensorIds>
-      all_trajectory_builder_options_;
+      all_trajectory_builder_options_;		//轨迹配置项
 };
 
 }  // namespace mapping
